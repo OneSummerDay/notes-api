@@ -1,78 +1,36 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import sqlite3
+
+from app.db import init_db
+from app.schemas import NoteCreate
+from app import crud
 
 
-app = FastAPI(title="Notes API", description="A simple API to manage notes", version="2.0.0")
+app = FastAPI(title="Notes API v2")
 
-conn = sqlite3.connect("notes.db", check_same_thread=False)
-
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL
-)
-""")
-
-conn.commit()
-
-class CreateNote(BaseModel):
-    title: str
-    content: str
+init_db()
 
 
 @app.post("/notes", status_code=201)
-def create_note(note: CreateNote):
-    cursor.execute("INSERT INTO notes (title, content) VALUES (?, ?)", (note.title, note.content))
-    conn.commit()
-    note_id = cursor.lastrowid
-    return {
-        "id": note_id,
-        "title": note.title,
-        "content": note.content
-    }
+def create_note(note: NoteCreate):
+    return crud.create_note(title=note.title, content=note.content)
 
 
 @app.get("/notes")
-def get_all_notes():
-    cursor.execute("SELECT id, title, content FROM notes")
-    rows = cursor.fetchall()
-    notes = []
-    for row in rows:
-        notes.append({
-            "id": row[0],
-            "title": row[1],
-            "content": row[2]
-        })
-
-    return notes
+def get_notes():
+    return crud.get_notes()
 
 
 @app.get("/notes/{note_id}")
-def get_note_by_id(note_id: int):
-    cursor.execute("SELECT id, title, content FROM notes WHERE id = ?", (note_id))
-    row = cursor.fetchone()
-    if row is None:
+def get_note(note_id: int):
+    note = crud.get_note(note_id=note_id)
+    if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
-    
-    return {
-        "id": row[0],
-        "title": row[1],
-        "content": row[2]
-    }
+    return note
 
 
-@app.delete("/notes/{note_id}", status_code=204)
-def delete_note_by_id(note_id: int):
-    cursor.execute("DELETE FROM notes WHERE id = ?", (note_id))
-    conn.commit()
-    if cursor.rowcount == 0:
+@app.delete("/notes/{note_id}")
+def delete_note(note_id: int):
+    ok = crud.delete_note(note_id=note_id)
+    if not ok:
         raise HTTPException(status_code=404, detail="Note not found")
-    conn.commit()
-
-    return {"message": "Note deleted successfully"}
-
-
+    return {"message": "Deleted"}
